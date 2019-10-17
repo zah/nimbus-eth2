@@ -106,10 +106,14 @@ else
 NIM_PARAMS := $(NIM_PARAMS) $(CHRONICLES_PARAMS) -d:release
 endif
 
-deps: | deps-common nat-libs beacon_chain.nims
+deps: | deps-common nat-libs beacon_chain.nims bearssl
 ifneq ($(USE_LIBBACKTRACE), 0)
 deps: | libbacktrace
 endif
+
+bearssl: | deps-common
+	+ cd vendor/nim-bearssl && \
+		$(ENV_SCRIPT) nimble buildBundledLib $(NIM_PARAMS) $(HANDLE_OUTPUT)
 
 #- deletes and recreates "beacon_chain.nims" which on Windows is a copy instead of a proper symlink
 update: | update-common
@@ -224,6 +228,8 @@ ntu: | build deps
 
 clean: | clean-common
 	rm -rf build/{$(TOOLS_CSV),all_tests,*_node,*ssz*,beacon_node_*,block_sim,state_sim,transition*}
+	+ cd vendor/nim-bearssl/bearssl/csources && \
+		$(MAKE) clean $(HANDLE_OUTPUT)
 ifneq ($(USE_LIBBACKTRACE), 0)
 	+ $(MAKE) -C vendor/nim-libbacktrace clean $(HANDLE_OUTPUT)
 endif

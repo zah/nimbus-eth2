@@ -1,7 +1,10 @@
+var cflags = "-pipe -fPIC"
 if defined(release):
   switch("nimcache", "nimcache/release/$projectName")
+  cflags &= " -O3 -fno-strict-aliasing"
 else:
   switch("nimcache", "nimcache/debug/$projectName")
+  cflags &= " -g3 -Og"
 
 if defined(windows):
   # disable timestamps in Windows PE headers - https://wiki.debian.org/ReproducibleBuilds/TimestampsInPEBinaries
@@ -25,12 +28,18 @@ if defined(windows):
 # use at least -msse2 or -msse3.
 if defined(disableMarchNative):
   switch("passC", "-msse3")
+  cflags &= " -msse3"
 else:
   switch("passC", "-march=native")
+  cflags &= " -march=native"
   if defined(windows):
     # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=65782
     # ("-fno-asynchronous-unwind-tables" breaks Nim's exception raising, sometimes)
     switch("passC", "-mno-avx512vl")
+    cflags &= " -mno-avx512vl"
+
+# used for building external C libraries like libbearssl.a
+putEnv("CFLAGS", cflags)
 
 --threads:on
 --opt:speed
@@ -40,6 +49,8 @@ else:
 --define:chronicles_line_numbers
 # for heap-usage-by-instance-type metrics and object base-type strings
 --define:nimTypeNames
+# compile (most of) BearSSL only once
+--define:BearSSLBundledStaticLib
 
 # switch("define", "snappy_implementation=libp2p")
 
