@@ -62,17 +62,23 @@ template ntag(tagname: string){.pragma.}
 # Symbols
 # --------------------------------------------------
 
+const nbench_trace {.booldefine.} = off # For manual "debug-echo"-style timing.
+when nbench_trace:
+  # strformat doesn't work in templates.
+  from strutils import alignLeft, align, formatFloat
+
+  var callDepth = -1
+
 template fnEntry(name: string, id: int, startTime, startCycle: untyped): untyped =
   ## Bench tracing to insert on function entry
+  bind callDepth
   {.noSideEffect, gcsafe.}:
     discard BenchMetrics[id].numCalls.atomicInc()
     let startTime = getMonoTime()
     let startCycle = getTicks()
 
-const nbench_trace {.booldefine.} = off # For manual "debug-echo"-style timing.
-when nbench_trace:
-  # strformat doesn't work in templates.
-  from strutils import alignLeft, formatFloat
+    when nbench_trace:
+      callDepth.inc()
 
 template fnExit(name: string, id: int, startTime, startCycle: untyped): untyped =
   ## Bench tracing to insert before each function exit
@@ -88,7 +94,12 @@ template fnExit(name: string, id: int, startTime, startCycle: untyped): untyped 
     when nbench_trace:
       # Advice: Use "when name == relevantProc" to isolate specific procedures.
       # strformat doesn't work in templates.
-      echo static(alignLeft(name, 50)),
+      let nesting = if callDepth == 0: ""
+                    else: align("⮱ ", callDepth * 2)
+      callDepth.dec()
+
+      echo nesting,
+           static(alignLeft(name, 50)),
            "Time (ms): ", alignLeft(formatFloat(elapsedTime.float64 * 1e-6, precision=3), 10),
            "Cycles (billions): ", formatFloat(elapsedCycles.float64 * 1e-9, precision=3)
 
