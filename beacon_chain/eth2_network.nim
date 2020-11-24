@@ -938,8 +938,8 @@ proc init*(T: type Eth2Node, conf: BeaconNodeConf, enrForkId: ENRForkID,
   result.pubsub = pubsub
   result.wantedPeers = conf.maxPeers
   result.peerPool = newPeerPool[Peer, PeerID](
-    maxIncomingPeers = conf.maxPeers / 2,
-    maxOutgoingPeers = conf.maxPeers / 2)
+    maxIncomingPeers = (conf.maxPeers / 2).int,
+    maxOutgoingPeers = (conf.maxPeers / 2).int)
   when not defined(local_testnet):
     result.connectTimeout = 1.minutes
     result.seenThreshold = 5.minutes
@@ -1393,8 +1393,8 @@ proc createEth2Node*(rng: ref BrHmacDrbgContext,
                                    SecureProtocol.Noise, # Only noise in ETH2!
                                  ],
                                  rng = rng,
-                                 maxInConns = conf.maxPeers / 2,
-                                 maxOutConns = conf.maxPeers / 2)
+                                 maxInConns = (conf.maxPeers / 2).int,
+                                 maxOutConns = (conf.maxPeers / 2).int)
 
   let
     params =
