@@ -937,7 +937,9 @@ proc init*(T: type Eth2Node, conf: BeaconNodeConf, enrForkId: ENRForkID,
   result.switch = switch
   result.pubsub = pubsub
   result.wantedPeers = conf.maxPeers
-  result.peerPool = newPeerPool[Peer, PeerID](maxPeers = conf.maxPeers)
+  result.peerPool = newPeerPool[Peer, PeerID](
+    maxIncomingPeers = conf.maxPeers / 2,
+    maxOutgoingPeers = conf.maxPeers / 2)
   when not defined(local_testnet):
     result.connectTimeout = 1.minutes
     result.seenThreshold = 5.minutes
@@ -1390,10 +1392,12 @@ proc createEth2Node*(rng: ref BrHmacDrbgContext,
                                  secureManagers = [
                                    SecureProtocol.Noise, # Only noise in ETH2!
                                  ],
-                                 rng = rng)
+                                 rng = rng,
+                                 maxInConns = conf.maxPeers / 2,
+                                 maxOutConns = conf.maxPeers / 2)
 
   let
-    params = 
+    params =
       block:
         var p = GossipSubParams.init()
         # https://github.com/ethereum/eth2.0-specs/blob/v1.0.0/specs/phase0/p2p-interface.md#the-gossip-domain-gossipsub
@@ -1410,9 +1414,9 @@ proc createEth2Node*(rng: ref BrHmacDrbgContext,
     pubsub = GossipSub.init(
       switch = switch,
       msgIdProvider = msgIdProvider,
-      triggerSelf = true, 
+      triggerSelf = true,
       sign = false,
-      verifySignature = false, 
+      verifySignature = false,
       anonymize = true,
       parameters = params).PubSub
 
