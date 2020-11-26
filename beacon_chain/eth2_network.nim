@@ -872,7 +872,7 @@ proc getPersistentNetMetadata*(conf: BeaconNodeConf): Eth2Metadata =
   else:
     result = Json.loadFile(metadataPath, Eth2Metadata)
 
-proc onConnEvent(node: Eth2Node, peerId: PeerID, event: PeerEvent) {.async.} =
+proc onPeerEvent(node: Eth2Node, peerId: PeerID, event: PeerEvent) {.async.} =
   let peer = node.getPeer(peerId)
   case event.kind
   of PeerEventKind.Joined:
@@ -880,7 +880,7 @@ proc onConnEvent(node: Eth2Node, peerId: PeerID, event: PeerEvent) {.async.} =
 
     await performProtocolHandshakes(peer, event.initiator)
     let res =
-      if event.initiator:
+      if not event.initiator:
         node.peerPool.addPeerNoWait(peer, PeerType.Incoming)
       else:
         node.peerPool.addPeerNoWait(peer, PeerType.Outgoing)
@@ -951,7 +951,7 @@ proc init*(T: type Eth2Node, conf: BeaconNodeConf, enrForkId: ENRForkID,
 
   let node = result
   proc peerHook(peerId: PeerID, event: PeerEvent): Future[void] {.gcsafe.} =
-    onConnEvent(node, peerId, event)
+    onPeerEvent(node, peerId, event)
 
   switch.addPeerEventHandler(peerHook, PeerEventKind.Joined)
   switch.addPeerEventHandler(peerHook, PeerEventKind.Left)
@@ -978,7 +978,7 @@ proc startListening*(node: Eth2Node) {.async.} =
 proc start*(node: Eth2Node) {.async.} =
 
   proc onPeerCountChanged() =
-    trace "Number of peers has been changed",
+    debug "Number of peers has been changed",
           space = node.peerPool.shortLogSpace(),
           acquired = node.peerPool.shortLogAcquired(),
           available = node.peerPool.shortLogAvailable(),
