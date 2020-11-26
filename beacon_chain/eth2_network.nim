@@ -872,62 +872,43 @@ proc getPersistentNetMetadata*(conf: BeaconNodeConf): Eth2Metadata =
   else:
     result = Json.loadFile(metadataPath, Eth2Metadata)
 
-proc onConnEvent(node: Eth2Node, peerId: PeerID, event: ConnEvent) {.async.} =
+proc onConnEvent(node: Eth2Node, peerId: PeerID, event: PeerEvent) {.async.} =
   let peer = node.getPeer(peerId)
   case event.kind
-  of ConnEventKind.Connected:
-    inc peer.connections
-    debug "Peer upgraded", peer = $peerId, connections = peer.connections
+  of PeerEventKind.Joined:
+    debug "Peer upgraded", peer = $peerId
 
-    if peer.connections == 1:
-      # Libp2p may connect multiple times to the same peer - using different
-      # transports for both incoming and outgoing. For now, we'll count our
-      # "fist" encounter with the peer as the true connection, leaving the
-      # other connections be - libp2p limits the number of concurrent
-      # connections to the same peer, and only one of these connections will be
-      # active. Nonetheless, this quirk will cause a number of odd behaviours:
-      # * For peer limits, we might miscount the incoming vs outgoing quota
-      # * Protocol handshakes are wonky: we'll not necessarily use the newly
-      #   connected transport - instead we'll just pick a random one!
+    await performProtocolHandshakes(peer, event.initiator)
+    let res =
+      if event.initiator:
+        node.peerPool.addPeerNoWait(peer, PeerType.Incoming)
+      else:
+        node.peerPool.addPeerNoWait(peer, PeerType.Outgoing)
 
-      await performProtocolHandshakes(peer, event.incoming)
+    case res:
+    of PeerStatus.LowScoreError, PeerStatus.NoSpaceError:
+      # Peer has low score or we do not have enough space in PeerPool,
+      # we are going to disconnect it gracefully.
+      await peer.disconnect(FaultOrError)
+    of PeerStatus.DeadPeerError:
+      # Peer's lifetime future is finished, so its already dead,
+      # we do not need to perform gracefull disconect.
+      discard
+    of PeerStatus.DuplicateError:
+      # Peer is already present in PeerPool, we can't perform disconnect,
+      # because in such case we could kill both connections (connection
+      # which is present in PeerPool and new one).
+      discard
+    of PeerStatus.Success:
+      # Peer was added to PeerPool.
+      discard
 
-      # While performing the handshake, the peer might have been disconnected -
-      # there's still a slim chance of a race condition here if a reconnect
-      # happens quickly
-      if peer.connections == 1:
-        let res =
-          if event.incoming:
-            node.peerPool.addPeerNoWait(peer, PeerType.Incoming)
-          else:
-            node.peerPool.addPeerNoWait(peer, PeerType.Outgoing)
-
-        case res:
-        of PeerStatus.LowScoreError, PeerStatus.NoSpaceError:
-          # Peer has low score or we do not have enough space in PeerPool,
-          # we are going to disconnect it gracefully.
-          await peer.disconnect(FaultOrError)
-        of PeerStatus.DeadPeerError:
-          # Peer's lifetime future is finished, so its already dead,
-          # we do not need to perform gracefull disconect.
-          discard
-        of PeerStatus.DuplicateError:
-          # Peer is already present in PeerPool, we can't perform disconnect,
-          # because in such case we could kill both connections (connection
-          # which is present in PeerPool and new one).
-          discard
-        of PeerStatus.Success:
-          # Peer was added to PeerPool.
-          discard
-
-  of ConnEventKind.Disconnected:
-    dec peer.connections
-    debug "Peer disconnected", peer = $peerId, connections = peer.connections
-    if peer.connections == 0:
-      let fut = peer.disconnectedFut
-      if fut != nil:
-        peer.disconnectedFut = nil
-        fut.complete()
+  of PeerEventKind.Left:
+    debug "Peer disconnected", peer = $peerId
+    let fut = peer.disconnectedFut
+    if fut != nil:
+      peer.disconnectedFut = nil
+      fut.complete()
 
 proc init*(T: type Eth2Node, conf: BeaconNodeConf, enrForkId: ENRForkID,
            switch: Switch, pubsub: PubSub, ip: Option[ValidIpAddress],
@@ -969,11 +950,11 @@ proc init*(T: type Eth2Node, conf: BeaconNodeConf, enrForkId: ENRForkID,
         msg.protocolMounter result
 
   let node = result
-  proc peerHook(peerId: PeerID, event: ConnEvent): Future[void] {.gcsafe.} =
+  proc peerHook(peerId: PeerID, event: PeerEvent): Future[void] {.gcsafe.} =
     onConnEvent(node, peerId, event)
 
-  switch.addConnEventHandler(peerHook, ConnEventKind.Connected)
-  switch.addConnEventHandler(peerHook, ConnEventKind.Disconnected)
+  switch.addPeerEventHandler(peerHook, PeerEventKind.Joined)
+  switch.addPeerEventHandler(peerHook, PeerEventKind.Left)
 
 template publicKey*(node: Eth2Node): keys.PublicKey =
   node.discovery.privKey.toPublicKey
@@ -1392,9 +1373,7 @@ proc createEth2Node*(rng: ref BrHmacDrbgContext,
                                  secureManagers = [
                                    SecureProtocol.Noise, # Only noise in ETH2!
                                  ],
-                                 rng = rng,
-                                 maxInConns = (conf.maxPeers / 2).int,
-                                 maxOutConns = (conf.maxPeers / 2).int)
+                                 rng = rng)
 
   let
     params =
