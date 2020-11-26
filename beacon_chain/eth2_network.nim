@@ -245,9 +245,6 @@ const
   SeenTableTimeReconnect* = 1.minutes
     ## Minimal time between disconnection and reconnection attempt
 
-  ResolvePeerTimeout* = 1.minutes
-    ## Maximum time allowed for peer resolve process.
-
 template neterr(kindParam: Eth2NetworkingErrorKind): auto =
   err(type(result), Eth2NetworkingError(kind: kindParam))
 
