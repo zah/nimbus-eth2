@@ -25,6 +25,9 @@ proc getKey*(peer: PeerTest): PeerTestID =
 proc getFuture*(peer: PeerTest): Future[void] =
   result = peer.future
 
+proc isAlive*(peer: PeerTest): bool =
+  not(peer.future.finished())
+
 proc `<`*(a, b: PeerTest): bool =
   result = `<`(a.weight, b.weight)
 
