@@ -1521,7 +1521,8 @@ proc createEth2Node*(rng: ref BrHmacDrbgContext,
                                  secureManagers = [
                                    SecureProtocol.Noise, # Only noise in ETH2!
                                  ],
-                                 rng = rng)
+                                 rng = rng,
+                                 maxConnections = conf.maxPeers)
 
   let
     params =
