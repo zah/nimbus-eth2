@@ -21,7 +21,8 @@ type
   # This solves an ambiguous identifier Error in some contexts
   # (other candidate is nativesockets.Domain)
   # TODO safe because it's in base, but...
-  Domain = phase0.Domain
+  #Domain = phase0.Domain
+  Domain = array[32, byte]
 
 # https://github.com/ethereum/eth2.0-specs/blob/v1.0.1/specs/phase0/beacon-chain.md#integer_squareroot
 func integer_squareroot*(n: SomeInteger): SomeInteger =
