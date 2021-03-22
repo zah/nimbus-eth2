@@ -15,7 +15,7 @@ import
   # Third-party
   stew/[byteutils, endians2],
   # Internal
-  ./datatypes/phase0, ./datatypes/hf1, ./digest, ./crypto, ../ssz/merkleization
+  ./datatypes/phase0, ./datatypes/altair, ./digest, ./crypto, ../ssz/merkleization
 
 type
   # This solves an ambiguous identifier Error in some contexts
