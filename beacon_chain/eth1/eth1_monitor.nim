@@ -1137,63 +1137,66 @@ proc testWeb3Provider*(web3Url: Uri,
   except CatchableError as err:
     echo "Web3 provider is not archive mode: ", err.msg
 
-when hasGenesisDetection:
-  proc init*(T: type Eth1Monitor,
-             db: BeaconChainDB,
-             preset: RuntimePreset,
-             web3Url: string,
-             depositContractAddress: Eth1Address,
-             depositContractDeployedAt: BlockHashOrNumber,
-             eth1Network: Option[Eth1Network]): Future[Result[T, string]] {.async.} =
-    try:
-      let dataProviderRes = await Web3DataProvider.new(depositContractAddress, web3Url)
-      if dataProviderRes.isErr:
-        return err(dataProviderRes.error)
-      var dataProvider = dataProviderRes.get
+proc init*(T: type Eth1Monitor,
+           preset: RuntimePreset,
+           db: BeaconChainDB,
+           web3Url: string,
+           depositContractAddress: Eth1Address,
+           depositContractDeployedAt: BlockHashOrNumber,
+           eth1Network: Option[Eth1Network]): Future[Result[T, string]] {.async.} =
+  try:
+    let dataProviderRes = await Web3DataProvider.new(depositContractAddress, web3Url)
+    if dataProviderRes.isErr:
+      return err(dataProviderRes.error)
+    var dataProvider = dataProviderRes.get
 
-      let knownStartBlockHash =
-        if depositContractDeployedAt.isHash:
-          depositContractDeployedAt.hash
-        else:
-          var blk: BlockObject
-          while true:
-            try:
-              blk = awaitWithRetries(
-                dataProvider.getBlockByNumber(depositContractDeployedAt.number))
-              break
-            except CatchableError as err:
-              error "Failed to obtain details for the starting block " &
-                    "of the deposit contract sync. The Web3 provider " &
-                    "may still be not fully synced", error = err.msg
-            await sleepAsync(chronos.seconds(10))
-            # TODO: After a single failure, the web3 object may enter a state
-            #       where it's no longer possible to make additional requests.
-            #       Until this is fixed upstream, we'll just try to recreate
-            #       the web3 provider before retrying. In case this fails,
-            #       the Eth1Monitor will be restarted.
-            dataProvider = tryGet(
-              await Web3DataProvider.new(depositContractAddress, web3Url))
-          blk.hash.asEth2Digest
+    let knownStartBlockHash =
+      if depositContractDeployedAt.isHash:
+        depositContractDeployedAt.hash
+      else:
+        var blk: BlockObject
+        while true:
+          try:
+            blk = awaitWithRetries(
+              dataProvider.getBlockByNumber(depositContractDeployedAt.number))
+            break
+          except CatchableError as err:
+            error "Failed to obtain details for the starting block " &
+                  "of the deposit contract sync. The Web3 provider " &
+                  "may still be not fully synced", error = err.msg
+          await sleepAsync(chronos.seconds(10))
+          # TODO: After a single failure, the web3 object may enter a state
+          #       where it's no longer possible to make additional requests.
+          #       Until this is fixed upstream, we'll just try to recreate
+          #       the web3 provider before retrying. In case this fails,
+          #       the Eth1Monitor will be restarted.
+          dataProvider = tryGet(
+            await Web3DataProvider.new(depositContractAddress, web3Url))
+        blk.hash.asEth2Digest
 
-      let depositContractSnapshot = DepositContractSnapshot(
-        eth1Block: knownStartBlockHash)
+    let depositContractSnapshot = DepositContractSnapshot(
+      eth1Block: knownStartBlockHash)
 
-      var monitor = Eth1Monitor.init(
-        db,
-        preset,
-        web3Url,
-        depositContractAddress,
-        depositContractSnapshot,
-        eth1Network)
+    SSZ.saveFile("/tmp/deposit_contract.ssz", depositContractSnapshot)
 
+    var monitor = Eth1Monitor.init(
+      preset,
+      db,
+      web3Url,
+      depositContractAddress,
+      depositContractSnapshot,
+      eth1Network)
+
+    when hasGenesisDetection:
       for i in 0 ..< db.genesisDeposits.len:
         monitor.produceDerivedData db.genesisDeposits.get(i)
 
-      return ok monitor
+    return ok monitor
 
-    except CatchableError as err:
-      return err("Failed to initialize the Eth1 monitor")
+  except CatchableError as err:
+    return err("Failed to initialize the Eth1 monitor")
 
+when hasGenesisDetection:
   proc findGenesisBlockInRange(m: Eth1Monitor, startBlock, endBlock: Eth1Block):
                                Future[Eth1Block] {.async.} =
     doAssert startBlock.timestamp != 0 and not m.isAfterMinGenesisTime(startBlock)

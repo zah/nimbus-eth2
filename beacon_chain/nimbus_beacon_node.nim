@@ -262,17 +262,32 @@ proc init*(T: type BeaconNode,
     chainDag.setTailState(checkpointState[], checkpointBlock)
 
   if eth1Monitor.isNil and
-     config.web3Url.len > 0 and
-     genesisDepositsSnapshotContents.len > 0:
-    let genesisDepositsSnapshot = SSZ.decode(genesisDepositsSnapshotContents,
-                                             DepositContractSnapshot)
-    eth1Monitor = Eth1Monitor.init(
-      runtimePreset,
-      db,
-      config.web3Url,
-      depositContractAddress,
-      genesisDepositsSnapshot,
-      eth1Network)
+     config.web3Url.len > 0:
+    if genesisDepositsSnapshotContents.len > 0:
+      eth1Monitor = Eth1Monitor.init(
+        runtimePreset,
+        db,
+        config.web3Url,
+        depositContractAddress,
+        SSZ.decode(genesisDepositsSnapshotContents, DepositContractSnapshot),
+        eth1Network)
+    else:
+      let eth1MonitorRes = waitFor Eth1Monitor.init(
+        runtimePreset,
+        db,
+        config.web3Url,
+        depositContractAddress,
+        depositContractDeployedAt,
+        eth1Network)
+      if eth1MonitorRes.isOk:
+        eth1Monitor = eth1MonitorRes.get
+      else:
+        fatal "Failed to initialize the Eth1 monitor",
+              err = eth1MonitorRes.error,
+              web3Url = config.web3Url,
+              depositContractAddress,
+              depositContractDeployedAt
+        quit 1
 
   let rpcServer = if config.rpcEnabled:
     RpcServer.init(config.rpcAddress, config.rpcPort)
